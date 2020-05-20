@@ -19,6 +19,7 @@ class CsvOutput(FileOutput):
         self._fieldnames = None
         self._warned_once = set()
         self._disable_warnings = False
+        self._temp_file = open("temp.csv", "w")
 
     @property
     def types_accepted(self):
@@ -29,19 +30,26 @@ class CsvOutput(FileOutput):
         """Log tabular data to CSV."""
         if isinstance(data, TabularInput):
             to_csv = data.as_primitive_dict
-
+            
             if not to_csv.keys() and not self._writer:
                 return
-
             if not self._writer:
-                self._fieldnames = set(to_csv.keys())
+                self._fieldnames = list(to_csv.keys())
                 self._writer = csv.DictWriter(
-                    self._log_file,
+                    self._temp_file,
                     fieldnames=self._fieldnames,
                     extrasaction='ignore')
                 self._writer.writeheader()
 
             if to_csv.keys() != self._fieldnames:
+                for key in to_csv.keys():
+                    if key not in self._fieldnames:
+                        self._fieldnames.append(key)
+                self._writer = csv.DictWriter(
+                    self._temp_file,
+                    fieldnames=self._fieldnames,
+                    extrasaction='ignore')
+
                 self._warn('Inconsistent TabularInput keys detected. '
                            'CsvOutput keys: {}. '
                            'TabularInput keys: {}. '
@@ -71,6 +79,18 @@ class CsvOutput(FileOutput):
     def disable_warnings(self):
         """Disable logger warnings for testing."""
         self._disable_warnings = True
+
+    def close(self):
+        if self._log_file and not self._log_file.closed:
+            self._temp_file.close()
+            f = open("temp.csv", newline='')
+            csv_reader = csv.DictReader(f, list(self._fieldnames))
+            writer = csv.DictWriter(self._log_file, self._fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for i, row in enumerate(csv_reader):
+                if i > 0:
+                    writer.writerow(row)
+            self._log_file.close()
 
 
 class CsvOutputWarning(UserWarning):
